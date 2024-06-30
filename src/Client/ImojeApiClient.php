@@ -9,51 +9,38 @@ use BitBag\SyliusImojePlugin\Model\PaymentMethod\ServiceModel;
 use BitBag\SyliusImojePlugin\Model\PaymentMethod\ServiceModelInterface;
 use BitBag\SyliusImojePlugin\Model\TransactionModelInterface;
 use BitBag\SyliusImojePlugin\Provider\RequestParams\RequestParamsProviderInterface;
-use GuzzleHttp\Client;
+use Http\Message\MessageFactory;
+use Nyholm\Psr7\Stream;
+use Psr\Http\Client\ClientExceptionInterface;
+use Psr\Http\Client\ClientInterface;
+use GuzzleHttp\ClientInterface as DeprecatedClientInterface;
 use GuzzleHttp\Exception\GuzzleException;
+use Psr\Http\Message\RequestFactoryInterface;
 use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\StreamFactoryInterface;
+use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Serializer\Serializer;
 
 final class ImojeApiClient implements ImojeApiClientInterface
 {
-    private Client $httpClient;
-
-    private RequestParamsProviderInterface $requestParamsProvider;
-
-    private string $token;
-
-    private string $url;
-
-    private Serializer $serializer;
-
     public function __construct(
-        Client $httpClient,
-        RequestParamsProviderInterface $requestParamsProvider,
-        Serializer $serializer,
-        string $token,
-        string $url
+        private RequestParamsProviderInterface $requestParamsProvider,
+        private Serializer $serializer,
+        private MessageFactory|RequestFactoryInterface $requestFactory,
+        private ClientInterface|DeprecatedClientInterface $httpClient,
+        private string $token,
+        private string $url,
+        private ?StreamFactoryInterface $streamFactory = null,
     ) {
-        $this->httpClient = $httpClient;
-        $this->requestParamsProvider = $requestParamsProvider;
-        $this->token = $token;
-        $this->url = $url;
-        $this->serializer = $serializer;
     }
 
     public function createTransaction(
         TransactionModelInterface $transactionModel
     ): ResponseInterface {
         $url = $this->url . self::TRANSACTION_ENDPOINT;
-
         $parameters = $this->requestParamsProvider->buildRequestParams($transactionModel, $this->token);
 
-        try {
-            $response = $this->httpClient->post($url, $parameters);
-        } catch (GuzzleException $e) {
-            throw new ImojeBadRequestException($e->getMessage());
-        }
-
-        return $response;
+        return $this->sendRequest(Request::METHOD_POST, $url, $parameters);
     }
 
     public function getShopInfo(string $serviceId): ServiceModelInterface
@@ -61,11 +48,7 @@ final class ImojeApiClient implements ImojeApiClientInterface
         $url = $this->url . 'service/' . $serviceId;
         $parameters = $this->requestParamsProvider->buildAuthorizeRequest($this->token);
 
-        try {
-            $response = $this->httpClient->get($url, $parameters);
-        } catch (GuzzleException $e) {
-            throw new ImojeBadRequestException($e->getMessage());
-        }
+        $response = $this->sendRequest(Request::METHOD_GET, $url, $parameters);
 
         $json = \json_decode($response->getBody()->getContents(), true);
         $servicePayload = $json['service'] ?? [];
@@ -78,13 +61,7 @@ final class ImojeApiClient implements ImojeApiClientInterface
     {
         $parameters = $this->requestParamsProvider->buildAuthorizeRequest($this->token);
 
-        try {
-            $response = $this->httpClient->get($url, $parameters);
-        } catch (GuzzleException $e) {
-            throw new ImojeBadRequestException($e->getMessage());
-        }
-
-        return $response;
+        return $this->sendRequest(Request::METHOD_GET, $url, $parameters);
     }
 
     public function refundTransaction(
@@ -94,9 +71,34 @@ final class ImojeApiClient implements ImojeApiClientInterface
     ): ResponseInterface {
         $parameters = $this->requestParamsProvider->buildRequestRefundParams($this->token, $serviceId, $amount);
 
+        return $this->sendRequest(Request::METHOD_POST, $url, $parameters);
+    }
+
+    private function sendRequest(string $method, string $url, array $parameters = []): ResponseInterface
+    {
+        $request = $this->requestFactory->createRequest($method, $url);
+
+        if (true === isset($parameters['body'])) {
+            $request = $request->withBody(
+                null === $this->streamFactory
+                    ? Stream::create($parameters['body'])
+                    : $this->streamFactory->createStream($parameters['body']),
+            );
+        }
+
+        if (true === isset($parameters['headers'])) {
+            foreach ($parameters['headers'] as $key => $value) {
+                $request = $request->withHeader($key, $value);
+            }
+        }
+
         try {
-            $response = $this->httpClient->post($url, $parameters);
-        } catch (GuzzleException $e) {
+            if ($this->httpClient instanceof DeprecatedClientInterface) {
+                $response = $this->httpClient->send($request);
+            } else {
+                $response = $this->httpClient->sendRequest($request);
+            }
+        } catch (ClientExceptionInterface|GuzzleException $e) {
             throw new ImojeBadRequestException($e->getMessage());
         }
 

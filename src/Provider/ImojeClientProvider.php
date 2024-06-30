@@ -7,28 +7,22 @@ namespace BitBag\SyliusImojePlugin\Provider;
 use BitBag\SyliusImojePlugin\Client\ImojeApiClient;
 use BitBag\SyliusImojePlugin\Factory\Serializer\SerializerFactoryInterface;
 use BitBag\SyliusImojePlugin\Provider\RequestParams\RequestParamsProviderInterface;
-use GuzzleHttp\Client;
+use GuzzleHttp\ClientInterface as DeprecatedClientInterface;
+use Http\Message\MessageFactory;
+use Psr\Http\Client\ClientInterface;
+use Psr\Http\Message\RequestFactoryInterface;
+use Psr\Http\Message\StreamFactoryInterface;
 
 final class ImojeClientProvider implements ImojeClientProviderInterface
 {
-    private ImojeClientConfigurationProviderInterface $imojeClientConfigurationProvider;
-
-    private Client $httpClient;
-
-    private RequestParamsProviderInterface $requestParamsProvider;
-
-    private SerializerFactoryInterface $serializerFactory;
-
     public function __construct(
-        ImojeClientConfigurationProviderInterface $imojeClientConfigurationProvider,
-        Client                                    $httpClient,
-        RequestParamsProviderInterface            $requestParamsProvider,
-        SerializerFactoryInterface                $serializerFactory
+        private ImojeClientConfigurationProviderInterface $imojeClientConfigurationProvider,
+        private RequestParamsProviderInterface $requestParamsProvider,
+        private SerializerFactoryInterface $serializerFactory,
+        private MessageFactory|RequestFactoryInterface $requestFactory,
+        private ClientInterface|DeprecatedClientInterface $httpClient,
+        private ?StreamFactoryInterface $streamFactory = null,
     ) {
-        $this->imojeClientConfigurationProvider = $imojeClientConfigurationProvider;
-        $this->httpClient = $httpClient;
-        $this->requestParamsProvider = $requestParamsProvider;
-        $this->serializerFactory = $serializerFactory;
     }
 
     public function getClient(string $code): ImojeApiClient
@@ -40,6 +34,14 @@ final class ImojeClientProvider implements ImojeClientProviderInterface
 
         $completeUrl = \sprintf('%s/%s/', $url, $merchantId);
 
-        return new ImojeApiClient($this->httpClient, $this->requestParamsProvider, $this->serializerFactory->createSerializerWithNormalizer(), $token, $completeUrl);
+        return new ImojeApiClient(
+            $this->requestParamsProvider,
+            $this->serializerFactory->createSerializerWithNormalizer(),
+            $this->requestFactory,
+            $this->httpClient,
+            $token,
+            $completeUrl,
+            $this->streamFactory,
+        );
     }
 }

@@ -9,7 +9,8 @@
         "sylius/refund-plugin": "^1.0",
         "sylius/sylius": "~1.13.0",
         "twig/extra-bundle": "^3.4",
-        "symfony/webpack-encore-bundle": "^1.16"
+        "symfony/webpack-encore-bundle": "^1.16",
+        "php-http/message-factory": "^1.1"
     },
     "require-dev": {
         "behat/behat": "^3.7",
