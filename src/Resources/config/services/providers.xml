@@ -13,9 +13,11 @@
                  id="bitbag.sylius_imoje_plugin.provider.imoje_client_provider"
         >
             <argument type="service" id="bitbag.sylius_imoje_plugin.provider.imoje_client_configuration_provider"/>
-            <argument type="service" id="sylius.http_client"/>
             <argument type="service" id="bitbag.sylius_imoje_plugin.provider.request_params.request_params_provider"/>
             <argument type="service" id="bitbag.sylius_imoje_plugin.factory.serializer.serializer_factory"/>
+            <argument type="service" id="Psr\Http\Message\RequestFactoryInterface"/>
+            <argument type="service" id="sylius.http_client"/>
+            <argument type="service" id="Psr\Http\Message\StreamFactoryInterface"/>
         </service>
 
         <service class="BitBag\SyliusImojePlugin\Provider\BlikModel\BlikModelProvider"
